@@ -57,8 +57,8 @@ class PlotHistory:
 
 # Environment Class
 class SmartphoneEnvironment:
-    price_delta = [10, -20, 5, -15, 0, 25, -30, 20, -5, 0]
-    noise_sd = 5
+    price_delta = [10, -80, 20, -60, 5, 50, -100, 30, -20, 0]  # Enhanced price drops
+    noise_sd = 20  # Increased standard deviation for more variation
 
     def __init__(self):
         self.time = 0
@@ -79,6 +79,7 @@ class SmartphoneEnvironment:
             self.price_delta[self.time % len(self.price_delta)]
             + random.gauss(0, self.noise_sd)
         )
+        self.price = max(100, self.price)  # Ensure price doesn't drop too low
         self.stock_history.append(self.stock)
         self.price_history.append(self.price)
         return {"price": self.price, "stock": self.stock}
@@ -92,7 +93,9 @@ class PriceMonitoringController:
 
     def monitor(self, percept):
         current_price = percept["price"]
-        if current_price < (1 - self.discount_threshold) * self.agent.average_price:
+        discount_price_threshold = (1 - self.discount_threshold) * self.agent.average_price
+        print(f"Checking price: {current_price:.2f}, Discount threshold: {discount_price_threshold:.2f}")
+        if current_price < discount_price_threshold:
             return True
         return False
 
@@ -110,18 +113,19 @@ class OrderingController:
         self.price_controller = price_controller
         self.inventory_controller = inventory_controller
 
-    def order(self, percept):
+    def order(self, percept, price_discount, low_stock):
         current_price = percept["price"]
-        # Check for discount and low stock condition
-        if self.price_controller.monitor(percept) and not self.inventory_controller.monitor(percept):
+
+        # Use precomputed monitoring results
+        if price_discount and not low_stock:
             discount_ratio = (self.price_controller.agent.average_price - current_price) / self.price_controller.agent.average_price
             tobuy = int(15 * (1 + discount_ratio))  # Buy more based on discount size
-            print(f"Discount detected! Discount ratio: {discount_ratio:.2f}. Ordering {tobuy} units.")
+            print(f"Discount detected! Discount ratio: {discount_ratio:.2f}. Ordering {tobuy} units.\n")
             return tobuy
-        elif self.inventory_controller.monitor(percept):
-            print("Low stock detected. Ordering 10 units.\n\n")
+        elif low_stock:
+            print("Low stock detected. Ordering 10 units.\n")
             return 10
-        print("No action taken. No significant discount or stock issue.\n\n")
+        print("No action taken. No significant discount or stock issue.\n")
         return 0
 
 
@@ -141,12 +145,12 @@ class SmartphoneAgent:
         current_price = percept["price"]
         self.average_price += (current_price - self.average_price) * 0.1
 
-        # Determine monitoring results
+        # Determine monitoring results (calculate once)
         price_discount = self.price_controller.monitor(percept)
         low_stock = self.inventory_controller.monitor(percept)
 
         # Use the ordering controller to decide how many units to buy
-        tobuy = self.ordering_controller.order(percept)
+        tobuy = self.ordering_controller.order(percept, price_discount, low_stock)
 
         # Track expenditure and decisions
         self.total_spent += tobuy * current_price
